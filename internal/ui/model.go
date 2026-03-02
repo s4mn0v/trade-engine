@@ -3,12 +3,14 @@ package ui
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 	"unicode"
 
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/s4mn0v/trade-engine/internal/app"
 )
 
 type SessionState int
@@ -40,6 +42,7 @@ type Model struct {
 	DataFile      string
 	StrategyFile  string
 	IndicatorFile string
+	Results       app.BacktestResult
 	Quitting      bool
 }
 
@@ -68,9 +71,9 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		key := msg.String()
+	// 1. GLOBAL KEY HANDLING
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		key := keyMsg.String()
 		if key == "ctrl+c" || key == "q" {
 			m.Quitting = true
 			return m, tea.Quit
@@ -85,6 +88,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.State = StateConfig
 				return m, nil
 			}
+		}
+
+		if m.State == StateFinished && key == "enter" {
+			return m, tea.Quit
 		}
 	}
 
@@ -122,15 +129,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case StateConfig:
-		if msg, ok := msg.(tea.KeyPressMsg); ok {
-			key := msg.String()
+		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+			key := keyMsg.String()
 
 			// Numeric Validation for Investment
-			if m.FocusIndex == 0 && len(key) == 1 {
-				r := rune(key[0])
-				if !unicode.IsDigit(r) && r != '.' {
-					return m, nil
-				}
+			if m.FocusIndex == 0 && len(key) == 1 && !unicode.IsDigit(rune(key[0])) && rune(key[0]) != '.' {
+				return m, nil
 			}
 
 			switch key {
@@ -163,7 +167,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds := make([]tea.Cmd, len(m.Inputs))
 			for i := range m.Inputs {
 				if i == m.FocusIndex {
-					cmds[i] = m.Inputs[i].Focus()
+					cmds = append(cmds, m.Inputs[i].Focus())
 				} else {
 					m.Inputs[i].Blur()
 				}
@@ -176,21 +180,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StateExecuting:
 		if _, ok := msg.(TickMsg); ok {
 			if m.ProgressPct >= 100 {
+				inv, _ := strconv.ParseFloat(m.Inputs[0].Value(), 64)
+				comm, _ := strconv.ParseFloat(m.Inputs[1].Value(), 64)
+				m.Results = app.RunBacktest(m.DataFile, m.StrategyFile, m.IndicatorFile, inv, comm)
+
 				m.State = StateFinished
 				return m, nil
 			}
-			m.ProgressPct += 5
-			m.Logs = append(m.Logs, fmt.Sprintf("UI Tick: simulating strategy engine step %d...", m.ProgressPct))
+			m.ProgressPct += 10
+			m.Logs = append(m.Logs, fmt.Sprintf("[%s] Processing trade signal...", time.Now().Format("15:04:05")))
 			if len(m.Logs) > 8 {
 				m.Logs = m.Logs[1:]
 			}
 			return m, Tick()
 		}
 
-	case StateFinished:
-		if msg, ok := msg.(tea.KeyPressMsg); ok && msg.String() == "enter" {
-			return m, tea.Quit
-		}
 	}
 
 	return m, nil

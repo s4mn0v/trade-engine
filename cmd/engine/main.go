@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-	// Initialize the UI Model from the internal package
 	m := ui.New()
 
 	p := tea.NewProgram(m)

@@ -16,7 +16,7 @@ var (
 
 func (m Model) View() tea.View {
 	if m.Quitting {
-		return tea.NewView("TUI Session Closed.")
+		return tea.NewView("Exiting...")
 	}
 
 	var content string
@@ -56,9 +56,14 @@ func (m Model) View() tea.View {
 		content += lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1).Width(60).Height(10).Render(logBox)
 
 	case StateFinished:
-		content = titleStyle.Render("6. RESULTS") + "\n" +
-			focusedStyle.Render("STRATEGY EXECUTION COMPLETE") + "\n\n" +
-			"View detailed logs in: testing.txt\n\nPress Enter to Exit."
+		content = titleStyle.Render("6. BACKTEST RESULTS") + "\n" +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("SIMULATION SUCCESSFUL") + "\n\n" +
+			fmt.Sprintf("Initial Capital: $%0.2f\n", m.Results.InitialCap) +
+			fmt.Sprintf("Final Balance: $%0.2f\n", m.Results.FinalBalance) +
+			fmt.Sprintf("Net Profit: %0.2f%%\n", m.Results.NetProfitPct) +
+			fmt.Sprintf("Total Trades: %d\n\n", len(m.Results.Trades)) +
+			"Full report saved to: " + focusedStyle.Render("results.txt") + "\n\n" +
+			"Press Enter to Exit..."
 	}
 
 	v := tea.NewView(docStyle.Render(content))
