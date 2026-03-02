@@ -1,185 +1,244 @@
 package main
 
 import (
-	"encoding/csv"
 	"fmt"
-	"io"
-	"log"
 	"os"
-	"strconv"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
+
+type sessionState int
 
 const (
-	commission = 0.00006 // 0.006%
-	inputState = iota
-	runningState
-	resultState
+	stateFilePicker sessionState = iota
+	stateConfig
+	stateExecuting
+	stateFinished
 )
 
-type Record struct {
-	Timestamp time.Time
-	Close     float64
-}
+// Styles
+var (
+	focusedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	titleStyle   = lipgloss.NewStyle().Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230")).Padding(0, 1).MarginBottom(1)
+	logStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+	docStyle     = lipgloss.NewStyle().Padding(1, 2)
+)
 
 type model struct {
-	state       int
-	fileInput   textinput.Model
-	amountInput textinput.Model
-	records     []Record
-	balance     float64
-	position    float64
-	initial     float64
-	err         error
+	state        sessionState
+	filepicker   filepicker.Model
+	inputs       []textinput.Model
+	focusIndex   int
+	logs         []string
+	progressPct  int // 0-100 for the v2 ProgressBar
+	selectedFile string
+	quitting     bool
+	width        int
 }
 
 func initialModel() model {
-	fi := textinput.New()
-	fi.Placeholder = "data.csv"
-	fi.Focus()
+	// 1. Setup Filepicker
+	fp := filepicker.New()
+	fp.AllowedTypes = []string{".csv"}
+	fp.CurrentDirectory, _ = os.Getwd()
 
-	ai := textinput.New()
-	ai.Placeholder = "1000"
+	// 2. Setup Text Inputs (Amount and Commission)
+	amount := textinput.New()
+	amount.Placeholder = "Investment Amount (e.g. 1000)"
+	amount.Focus()
+
+	comm := textinput.New()
+	comm.Placeholder = "Commission % (e.g. 0.1)"
 
 	return model{
-		state:       inputState,
-		fileInput:   fi,
-		amountInput: ai,
+		state:       stateFilePicker,
+		filepicker:  fp,
+		inputs:      []textinput.Model{amount, comm},
+		logs:        []string{"[SYSTEM] Engine initialized.", "[SYSTEM] Awaiting data source..."},
+		progressPct: 0,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return m.filepicker.Init()
+}
+
+// Simulated Tick for UI demonstration
+type tickMsg time.Time
+
+func tick() tea.Cmd {
+	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			m.quitting = true
 			return m, tea.Quit
-		case "enter":
-			if m.state == inputState {
-				if m.fileInput.Focused() {
-					m.fileInput.Blur()
-					m.amountInput.Focus()
-				} else {
-					m.initial, _ = strconv.ParseFloat(m.amountInput.Value(), 64)
-					m.balance = m.initial
-					m.state = runningState
-					return m, m.runSimulation
-				}
-			}
-		}
-	case error:
-		m.err = msg
-		return m, nil
-	case []Record:
-		m.records = msg
-		m.executeStrategy()
-		m.state = resultState
-		return m, nil
-	}
-
-	if m.fileInput.Focused() {
-		m.fileInput, cmd = m.fileInput.Update(msg)
-	} else {
-		m.amountInput, cmd = m.amountInput.Update(msg)
-	}
-	return m, cmd
-}
-
-func (m model) runSimulation() tea.Msg {
-	f, err := os.Open(m.fileInput.Value())
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	reader := csv.NewReader(f)
-	_, _ = reader.Read() // Skip headers
-
-	var records []Record
-	for {
-		line, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
 		}
 
-		// Header: Timestamp,Open,High,Low,Close...
-		t, _ := time.Parse("2006-01-02 15:04:05-07:00", line[0])
-		c, _ := strconv.ParseFloat(line[4], 64)
-		records = append(records, Record{Timestamp: t, Close: c})
-	}
-	return records
-}
-
-func (m *model) executeStrategy() {
-	lastTradeDay := -1
-
-	for _, r := range m.records {
-		day := int(r.Timestamp.Weekday())
-		hour := r.Timestamp.Hour()
-
-		// Buy Monday 00:00
-		if day == int(time.Monday) && hour == 0 && m.balance > 0 && lastTradeDay != day {
-			cost := m.balance * commission
-			m.position = (m.balance - cost) / r.Close
-			m.balance = 0
-			lastTradeDay = day
-		}
-
-		// Sell Sunday 23:00 (or last available hour of Sunday)
-		if day == int(time.Sunday) && hour == 22 && m.position > 0 && lastTradeDay != day {
-			gross := m.position * r.Close
-			m.balance = gross * (1 - commission)
-			m.position = 0
-			lastTradeDay = day
-		}
-	}
-
-	// Final liquidation if position held
-	if m.position > 0 {
-		m.balance = (m.position * m.records[len(m.records)-1].Close) * (1 - commission)
-		m.position = 0
-	}
-}
-
-func (m model) View() string {
-	if m.err != nil {
-		return fmt.Sprintf("Error: %v\n", m.err)
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
 	}
 
 	switch m.state {
-	case inputState:
-		return fmt.Sprintf(
-			"CSV Path: %s\nInitial Investment: %s\n\n(Press Enter to switch/confirm)",
-			m.fileInput.View(),
-			m.amountInput.View(),
-		)
-	case runningState:
-		return "Loading data and running simulation..."
-	case resultState:
-		pnl := m.balance - m.initial
-		return fmt.Sprintf(
-			"Results:\nInitial: %.2f USDT\nFinal:   %.2f USDT\nPnL:     %.2f USDT (%.2f%%)\n\nPress 'q' to quit",
-			m.initial, m.balance, pnl, (pnl/m.initial)*100,
-		)
+	case stateFilePicker:
+		var cmd tea.Cmd
+		m.filepicker, cmd = m.filepicker.Update(msg)
+
+		if didSelect, path := m.filepicker.DidSelectFile(msg); didSelect {
+			m.selectedFile = path
+			m.state = stateConfig
+			return m, nil
+		}
+		return m, cmd
+
+	case stateConfig:
+		if msg, ok := msg.(tea.KeyPressMsg); ok {
+			switch msg.String() {
+			case "tab", "shift+tab", "up", "down":
+				if msg.String() == "up" || msg.String() == "shift+tab" {
+					m.focusIndex--
+				} else {
+					m.focusIndex++
+				}
+
+				// Cycle focus between inputs and the "Execute" pseudo-button
+				if m.focusIndex > len(m.inputs) {
+					m.focusIndex = 0
+				} else if m.focusIndex < 0 {
+					m.focusIndex = len(m.inputs)
+				}
+
+				cmds := make([]tea.Cmd, len(m.inputs))
+				for i := 0; i < len(m.inputs); i++ {
+					if i == m.focusIndex {
+						cmds[i] = m.inputs[i].Focus()
+					} else {
+						m.inputs[i].Blur()
+					}
+				}
+				return m, tea.Batch(cmds...)
+
+			case "enter":
+				// If on last input or on the "pseudo-button" index
+				m.state = stateExecuting
+				return m, tick()
+			}
+		}
+
+		cmds := make([]tea.Cmd, len(m.inputs))
+		for i := range m.inputs {
+			m.inputs[i], cmds[i] = m.inputs[i].Update(msg)
+		}
+		return m, tea.Batch(cmds...)
+
+	case stateExecuting:
+		switch msg.(type) {
+		case tickMsg:
+			if m.progressPct >= 100 {
+				m.state = stateFinished
+				return m, nil
+			}
+
+			// UI Simulation Logic
+			m.progressPct += 5
+			m.logs = append(m.logs, fmt.Sprintf("Evaluating Strategy Logic at index %d...", m.progressPct*12))
+			if len(m.logs) > 8 {
+				m.logs = m.logs[1:]
+			}
+			return m, tick()
+		}
+
+	case stateFinished:
+		if msg, ok := msg.(tea.KeyPressMsg); ok && msg.String() == "enter" {
+			return m, tea.Quit
+		}
 	}
-	return ""
+
+	return m, nil
+}
+
+func (m model) View() tea.View {
+	if m.quitting {
+		return tea.NewView("Closing strategy engine...")
+	}
+
+	var content string
+
+	switch m.state {
+	case stateFilePicker:
+		content = titleStyle.Render("STEP 1: DATA SELECTION") + "\n" +
+			"Select the .csv file for backtesting\n\n" +
+			m.filepicker.View()
+
+	case stateConfig:
+		content = titleStyle.Render("STEP 2: PARAMETERS") + "\n" +
+			fmt.Sprintf("File: %s\n\n", focusedStyle.Render(m.selectedFile))
+
+		for i := range m.inputs {
+			content += m.inputs[i].View() + "\n"
+		}
+
+		button := "\n[ EXECUTE STRATEGY ]"
+		if m.focusIndex == len(m.inputs) {
+			button = "\n" + focusedStyle.Render("[ EXECUTE STRATEGY ]")
+		}
+		content += button
+
+	case stateExecuting:
+		content = titleStyle.Render("STEP 3: EXECUTION CANVAS") + "\n" +
+			fmt.Sprintf("Processing: %s\n\n", m.selectedFile)
+
+		// The "Canvas" area
+		logBox := ""
+		for _, l := range m.logs {
+			logBox += logStyle.Render("> "+l) + "\n"
+		}
+
+		canvas := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			Padding(1).
+			Width(60).
+			Height(10).
+			Render(logBox)
+
+		content += canvas + "\n\n(The progress bar is displayed in the terminal status section)"
+
+	case stateFinished:
+		content = titleStyle.Render("STEP 4: RESULTS") + "\n" +
+			lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("STRATEGY COMPLETED SUCCESSFULLY") + "\n\n" +
+			fmt.Sprintf("Configured Amount: $%s\n", m.inputs[0].Value()) +
+			fmt.Sprintf("Configured Comm:   %s%%\n", m.inputs[1].Value()) +
+			"Status:            Logs saved to testing.txt\n\n" +
+			"Press Enter to exit."
+	}
+
+	// Create the view
+	v := tea.NewView(docStyle.Render(content))
+
+	// Handle Progress Bar via tea.View properties (v2 way)
+	if m.state == stateExecuting {
+		v.ProgressBar = tea.NewProgressBar(tea.ProgressBarDefault, m.progressPct)
+	} else if m.state == stateFinished {
+		v.ProgressBar = tea.NewProgressBar(tea.ProgressBarDefault, 100)
+	}
+
+	return v
 }
 
 func main() {
 	p := tea.NewProgram(initialModel())
 	if _, err := p.Run(); err != nil {
-		log.Fatal(err)
+		fmt.Printf("Fatal Error: %v", err)
+		os.Exit(1)
 	}
 }
