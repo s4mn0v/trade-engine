@@ -1,44 +1,45 @@
 package app
 
 import (
-	"time"
+	"github.com/s4mn0v/trade-engine/internal/backtesting"
+	"github.com/s4mn0v/trade-engine/internal/data"
+	"github.com/s4mn0v/trade-engine/internal/report"
+	"github.com/s4mn0v/trade-engine/internal/strategies"
 )
 
-// MockTrade represents a simplified result of a trade
-type MockTrade struct {
-	ID        int
-	Symbol    string
-	Type      string // "BUY" or "SELL"
-	Price     float64
-	Profit    float64
-	Timestamp time.Time
-}
-
-// BacktestResult contains the overall summary
-type BacktestResult struct {
-	Trades       []MockTrade
-	InitialCap   float64
-	FinalBalance float64
-	NetProfitPct float64
-}
-
-// RunBacktest simulates the execution.
-// In a real app, this would be a long-running process.
-func RunBacktest(dataFile, strategy, indicator string, investment, commission float64) BacktestResult {
-	// Simulated delay is handled by the UI Tick for UX purposes.
-	// This function returns the final static data.
-
-	mockTrades := []MockTrade{
-		{ID: 1, Symbol: "BTC/USDT", Type: "BUY", Price: 42000.00, Timestamp: time.Now()},
-		{ID: 2, Symbol: "BTC/USDT", Type: "SELL", Price: 43500.00, Profit: 150.0, Timestamp: time.Now().Add(time.Hour)},
-		{ID: 3, Symbol: "BTC/USDT", Type: "BUY", Price: 41000.00, Timestamp: time.Now().Add(time.Hour * 2)},
-		{ID: 4, Symbol: "BTC/USDT", Type: "SELL", Price: 44000.00, Profit: 300.0, Timestamp: time.Now().Add(time.Hour * 3)},
+// RunFullBacktest performs the end-to-end backtest process.
+func RunFullBacktest(dataPath, stratPath, indPath string, investment, commission float64) (backtesting.Summary, error) {
+	// 1. Load Data (Infrastructure Layer)
+	candles, err := data.LoadCandlesFromCSV(dataPath)
+	if err != nil {
+		return backtesting.Summary{}, err
 	}
 
-	return BacktestResult{
-		Trades:       mockTrades,
-		InitialCap:   investment,
-		FinalBalance: investment + 450.0,
-		NetProfitPct: 4.5,
+	// 2. Instantiate Strategy (Strategy Layer)
+	// For now, we use the HybridDARSI. In the future, stratPath could determine which one to load.
+	strat := strategies.NewHybridDARSI()
+
+	// 3. Prepare Execution (Backtesting Layer)
+	// We use 1.0 as default leverage for now.
+	executor := backtesting.NewExecutor(commission, 1.0)
+	engine := backtesting.Engine{
+		Strategy:   strat,
+		Candles:    candles,
+		Executor:   executor,
+		Investment: investment,
 	}
+
+	// 4. Run Simulation
+	trades := engine.Run()
+
+	// 5. Calculate Performance (Metrics)
+	summary := backtesting.CalculateMetrics(trades, investment, commission)
+
+	// 6. Persist Results (Report Layer)
+	err = report.ExportResults("results.txt", trades, summary)
+	if err != nil {
+		return summary, err
+	}
+
+	return summary, nil
 }

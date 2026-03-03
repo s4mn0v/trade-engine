@@ -58,10 +58,12 @@ func (m Model) View() tea.View {
 	case StateFinished:
 		content = titleStyle.Render("6. BACKTEST RESULTS") + "\n" +
 			lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Bold(true).Render("SIMULATION SUCCESSFUL") + "\n\n" +
-			fmt.Sprintf("Initial Capital: $%0.2f\n", m.Results.InitialCap) +
-			fmt.Sprintf("Final Balance: $%0.2f\n", m.Results.FinalBalance) +
-			fmt.Sprintf("Net Profit: %0.2f%%\n", m.Results.NetProfitPct) +
-			fmt.Sprintf("Total Trades: %d\n\n", len(m.Results.Trades)) +
+			fmt.Sprintf("Initial Capital: $%0.2f\n", m.Results.InitialBalance) + // FIXED: InitialBalance
+			fmt.Sprintf("Final Balance:   $%0.2f\n", m.Results.FinalBalance) +
+			fmt.Sprintf("Net Profit:      %0.2f%%\n", m.Results.ProfitPct) + // FIXED: ProfitPct
+			fmt.Sprintf("Win Rate:        %0.2f%%\n", m.Results.WinRate) + // Added for extra detail
+			fmt.Sprintf("Max Drawdown:    %0.2f%%\n", m.Results.MaxDrawdown) + // Added for extra detail
+			fmt.Sprintf("Total Trades:    %d\n\n", m.Results.TotalTrades) + // FIXED: TotalTrades
 			"Full report saved to: " + focusedStyle.Render("results.txt") + "\n\n" +
 			"Press Enter to Exit..."
 	}

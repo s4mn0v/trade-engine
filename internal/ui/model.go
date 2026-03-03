@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/s4mn0v/trade-engine/internal/app"
+	"github.com/s4mn0v/trade-engine/internal/backtesting"
 )
 
 type SessionState int
@@ -42,7 +43,7 @@ type Model struct {
 	DataFile      string
 	StrategyFile  string
 	IndicatorFile string
-	Results       app.BacktestResult
+	Results       backtesting.Summary // FIXED: Use backtesting.Summary instead of app.BacktestResult
 	Quitting      bool
 }
 
@@ -102,7 +103,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if didSelect, path := m.Filepicker.DidSelectFile(msg); didSelect {
 			m.DataFile = path
 			m.State = StateStrategyPicker
-			m.Filepicker.AllowedTypes = []string{".go"} // Lock to Go
+			m.Filepicker.AllowedTypes = []string{".go"}
 			return m, nil
 		}
 		return m, cmd
@@ -113,7 +114,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if didSelect, path := m.Filepicker.DidSelectFile(msg); didSelect {
 			m.StrategyFile = path
 			m.State = StateIndicatorPicker
-			m.Filepicker.AllowedTypes = []string{".go"} // Lock to Go
+			m.Filepicker.AllowedTypes = []string{".go"}
 			return m, nil
 		}
 		return m, cmd
@@ -132,7 +133,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 			key := keyMsg.String()
 
-			// Numeric Validation for Investment
 			if m.FocusIndex == 0 && len(key) == 1 && !unicode.IsDigit(rune(key[0])) && rune(key[0]) != '.' {
 				return m, nil
 			}
@@ -164,7 +164,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			var cmd tea.Cmd
-			cmds := make([]tea.Cmd, len(m.Inputs))
+			cmds := make([]tea.Cmd, 0) // Fixed initialization
 			for i := range m.Inputs {
 				if i == m.FocusIndex {
 					cmds = append(cmds, m.Inputs[i].Focus())
@@ -182,19 +182,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.ProgressPct >= 100 {
 				inv, _ := strconv.ParseFloat(m.Inputs[0].Value(), 64)
 				comm, _ := strconv.ParseFloat(m.Inputs[1].Value(), 64)
-				m.Results = app.RunBacktest(m.DataFile, m.StrategyFile, m.IndicatorFile, inv, comm)
 
+				// FIXED: Call the real RunFullBacktest function from the app package
+				summary, err := app.RunFullBacktest(m.DataFile, m.StrategyFile, m.IndicatorFile, inv, comm)
+				if err != nil {
+					m.Logs = append(m.Logs, fmt.Sprintf("[ERROR] %v", err))
+					// In a real app, you might transition to an error state here
+				}
+
+				m.Results = summary
 				m.State = StateFinished
 				return m, nil
 			}
 			m.ProgressPct += 10
-			m.Logs = append(m.Logs, fmt.Sprintf("[%s] Processing trade signal...", time.Now().Format("15:04:05")))
+			m.Logs = append(m.Logs, fmt.Sprintf("[%s] Analyzing market data...", time.Now().Format("15:04:05")))
 			if len(m.Logs) > 8 {
 				m.Logs = m.Logs[1:]
 			}
 			return m, Tick()
 		}
-
 	}
 
 	return m, nil
