@@ -23,16 +23,13 @@ func (m Model) View() tea.View {
 
 	switch m.State {
 	case StateDataPicker:
-		content = titleStyle.Render("1. SELECT DATA (.CSV)") + "\n" + m.Filepicker.View()
-
+		content = titleStyle.Render("1. SELECT DATA (.CSV)") + "\n" + logStyle.Render("Browsing: /data") + "\n\n" + m.Filepicker.View()
 	case StateStrategyPicker:
 		content = titleStyle.Render("2. SELECT STRATEGY (.GO)") + "\n" +
 			"Press 's' to skip strategy selection.\n\n" + m.Filepicker.View()
 
 	case StateIndicatorPicker:
-		content = titleStyle.Render("3. SELECT INDICATOR (.GO)") + "\n" +
-			"Press 's' to skip indicator selection.\n\n" + m.Filepicker.View()
-
+		content = titleStyle.Render("2. SELECT STRATEGY (.GO)") + "\n" + logStyle.Render("Browsing: /scripts") + "\n\n" + m.Filepicker.View()
 	case StateConfig:
 		content = titleStyle.Render("4. CONFIGURATION") + "\n" +
 			fmt.Sprintf("Data: %s | Strat: %s | Ind: %s\n\n",

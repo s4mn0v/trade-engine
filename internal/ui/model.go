@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 	"unicode"
@@ -45,13 +46,14 @@ type Model struct {
 	IndicatorFile string
 	Results       backtesting.Summary
 	Quitting      bool
+
+	// We keep these only as starting-point references
+	DataRoot    string
+	ScriptsRoot string
 }
 
 func New() Model {
-	fp := filepicker.New()
-	fp.AllowedTypes = []string{".csv"}
-	fp.CurrentDirectory, _ = os.Getwd()
-
+	// Initialize Inputs
 	amount := textinput.New()
 	amount.Placeholder = "Investment Amount (Numbers Only)"
 	amount.Focus()
@@ -62,11 +64,27 @@ func New() Model {
 	lev := textinput.New()
 	lev.Placeholder = "Leverage (Default 1.0)"
 
+	// Setup Starting Paths
+	cwd, _ := os.Getwd()
+	dataRoot := filepath.Join(cwd, "data")
+	scriptsRoot := filepath.Join(cwd, "scripts")
+
+	// Ensure folders exist for convenience, but we won't lock the user here
+	os.MkdirAll(dataRoot, 0o755)
+	os.MkdirAll(scriptsRoot, 0o755)
+
+	// Initialize Filepicker
+	fp := filepicker.New()
+	fp.CurrentDirectory = dataRoot
+	fp.AllowedTypes = []string{".csv"}
+
 	return Model{
-		State:      StateDataPicker,
-		Filepicker: fp,
-		Inputs:     []textinput.Model{amount, comm, lev},
-		Logs:       []string{"[SYSTEM] Waiting for data selection..."},
+		State:       StateDataPicker,
+		Filepicker:  fp,
+		DataRoot:    dataRoot,
+		ScriptsRoot: scriptsRoot,
+		Inputs:      []textinput.Model{amount, comm, lev},
+		Logs:        []string{"[SYSTEM] Waiting for data selection..."},
 	}
 }
 
@@ -86,7 +104,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key == "s" {
 			if m.State == StateStrategyPicker {
 				m.State = StateIndicatorPicker
-				return m, nil
+				return m, m.Filepicker.Init()
 			}
 			if m.State == StateIndicatorPicker {
 				m.State = StateConfig
@@ -99,36 +117,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// 2. STATE-SPECIFIC UPDATES
 	switch m.State {
-	case StateDataPicker:
+	case StateDataPicker, StateStrategyPicker, StateIndicatorPicker:
 		var cmd tea.Cmd
 		m.Filepicker, cmd = m.Filepicker.Update(msg)
-		if didSelect, path := m.Filepicker.DidSelectFile(msg); didSelect {
-			m.DataFile = path
-			m.State = StateStrategyPicker
-			m.Filepicker.AllowedTypes = []string{".go"}
-			return m, nil
-		}
-		return m, cmd
 
-	case StateStrategyPicker:
-		var cmd tea.Cmd
-		m.Filepicker, cmd = m.Filepicker.Update(msg)
+		// Handle Selection
 		if didSelect, path := m.Filepicker.DidSelectFile(msg); didSelect {
-			m.StrategyFile = path
-			m.State = StateIndicatorPicker
-			m.Filepicker.AllowedTypes = []string{".go"}
-			return m, nil
-		}
-		return m, cmd
+			switch m.State {
+			case StateDataPicker:
+				m.DataFile = path
+				m.State = StateStrategyPicker
 
-	case StateIndicatorPicker:
-		var cmd tea.Cmd
-		m.Filepicker, cmd = m.Filepicker.Update(msg)
-		if didSelect, path := m.Filepicker.DidSelectFile(msg); didSelect {
-			m.IndicatorFile = path
-			m.State = StateConfig
-			return m, nil
+				// Relocate to scripts folder for convenience, but user can still leave
+				m.Filepicker.CurrentDirectory = m.ScriptsRoot
+				m.Filepicker.AllowedTypes = []string{".go"}
+				return m, m.Filepicker.Init()
+
+			case StateStrategyPicker:
+				m.StrategyFile = path
+				m.State = StateIndicatorPicker
+				return m, m.Filepicker.Init()
+
+			case StateIndicatorPicker:
+				m.IndicatorFile = path
+				m.State = StateConfig
+				return m, nil
+			}
 		}
 		return m, cmd
 
@@ -173,7 +189,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			var cmd tea.Cmd
-			cmds := make([]tea.Cmd, 0) // Fixed initialization
+			cmds := make([]tea.Cmd, 0)
 			for i := range m.Inputs {
 				if i == m.FocusIndex {
 					cmds = append(cmds, m.Inputs[i].Focus())
@@ -193,11 +209,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				comm, _ := strconv.ParseFloat(m.Inputs[1].Value(), 64)
 				lev, _ := strconv.ParseFloat(m.Inputs[2].Value(), 64)
 
-				// FIXED: Call the real RunFullBacktest function from the app package
 				summary, err := app.RunFullBacktest(m.DataFile, m.StrategyFile, m.IndicatorFile, inv, comm, lev)
 				if err != nil {
 					m.Logs = append(m.Logs, fmt.Sprintf("[ERROR] %v", err))
-					// In a real app, you might transition to an error state here
+					return m, nil
 				}
 
 				m.Results = summary

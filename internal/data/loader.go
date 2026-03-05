@@ -13,12 +13,14 @@ import (
 
 // CSV Column Mapping based on your provided data
 const (
-	ColTimestamp = 0
-	ColOpen      = 1
-	ColHigh      = 2
-	ColLow       = 3
-	ColClose     = 4
-	ColVolume    = 5 // Using BaseVolume
+	ColTimestamp   = 0
+	ColOpen        = 1
+	ColHigh        = 2
+	ColLow         = 3
+	ColClose       = 4
+	ColBaseVolume  = 5
+	ColUSDTVolume  = 6
+	ColQuoteVolume = 7
 )
 
 // LoadCandlesFromCSV reads a file and converts its rows into domain objects.
@@ -54,24 +56,25 @@ func LoadCandlesFromCSV(filePath string) ([]domain.Candle, error) {
 		if err != nil {
 			return nil, fmt.Errorf("row %d: invalid timestamp format: %s", lineCount+1, record[ColTimestamp])
 		}
-		ts := time.UnixMilli(ms)
 
-		// 2. Parse Prices and Volume
 		open, _ := strconv.ParseFloat(record[ColOpen], 64)
 		high, _ := strconv.ParseFloat(record[ColHigh], 64)
 		low, _ := strconv.ParseFloat(record[ColLow], 64)
 		close, _ := strconv.ParseFloat(record[ColClose], 64)
-		volume, _ := strconv.ParseFloat(record[ColVolume], 64)
+		baseVol, _ := strconv.ParseFloat(record[ColBaseVolume], 64)
+		usdtVol, _ := strconv.ParseFloat(record[ColUSDTVolume], 64)
+		quoteVol, _ := strconv.ParseFloat(record[ColQuoteVolume], 64)
 
-		// 3. Construct Domain Object
 		candles = append(candles, domain.Candle{
-			Index:     lineCount,
-			Timestamp: ts,
-			Open:      open,
-			High:      high,
-			Low:       low,
-			Close:     close,
-			Volume:    volume,
+			Index:       lineCount,
+			Timestamp:   time.UnixMilli(ms),
+			Open:        open,
+			High:        high,
+			Low:         low,
+			Close:       close,
+			BaseVolume:  baseVol,
+			USDTVolume:  usdtVol,
+			QuoteVolume: quoteVol,
 		})
 
 		lineCount++

@@ -1,10 +1,9 @@
 package backtesting
 
 import (
-	"github.com/s4mn0v/trade-engine/internal/domain" // REPLACE WITH YOUR MODULE PATH
+	"github.com/s4mn0v/trade-engine/internal/domain"
 )
 
-// Engine runs the backtest loop.
 type Engine struct {
 	Strategy   domain.Strategy
 	Candles    []domain.Candle
@@ -24,11 +23,10 @@ func (e *Engine) Run() []domain.Trade {
 	}
 
 	var completedTrades []domain.Trade
+	currentBalance := e.Investment
 
-	// 2. Iterate through market timeline
 	for i, candle := range e.Candles {
 		signal, hasSignal := signalMap[i]
-
 		if !hasSignal {
 			continue
 		}
@@ -39,7 +37,26 @@ func (e *Engine) Run() []domain.Trade {
 		} else if signal.Action == domain.ActionSell && e.Executor.ActiveTrade != nil {
 			trade := e.Executor.ClosePosition(i, candle)
 			if trade != nil {
+				// --- LIQUIDATION LOGIC START ---
+				// 1. Calculate Profit/Loss
+				rawPnL := trade.Profit() * trade.Leverage
+
+				// 2. Calculate Fees (Entry + Exit) using the Executor's CommissionRate
+				// Note: CommissionRate is already decimal (e.g., 0.0006)
+				entryFee := trade.EntryPrice * e.Executor.CommissionRate * trade.Leverage
+				exitFee := trade.ExitPrice * e.Executor.CommissionRate * trade.Leverage
+
+				netPnL := rawPnL - entryFee - exitFee
+				currentBalance += netPnL
+
 				completedTrades = append(completedTrades, *trade)
+
+				// 3. Check for Bankruptcy
+				if currentBalance <= 0 {
+					// Stop the backtest immediately
+					break
+				}
+				// --- LIQUIDATION LOGIC END ---
 			}
 		}
 	}

@@ -1,10 +1,13 @@
 package app
 
 import (
+	"fmt"
+
 	"github.com/s4mn0v/trade-engine/internal/backtesting"
 	"github.com/s4mn0v/trade-engine/internal/data"
+	"github.com/s4mn0v/trade-engine/internal/domain"
 	"github.com/s4mn0v/trade-engine/internal/report"
-	"github.com/s4mn0v/trade-engine/internal/strategies"
+	"github.com/s4mn0v/trade-engine/internal/strategy"
 )
 
 // RunFullBacktest performs the end-to-end backtest process.
@@ -16,11 +19,18 @@ func RunFullBacktest(dataPath, stratPath, indPath string, investment, commission
 	}
 
 	// 2. Instantiate Strategy (Strategy Layer)
-	// For now, we use the HybridDARSI. In the future, stratPath could determine which one to load.
-	strat := strategies.NewHybridDARSI()
+	// strat := strategies.NewHybridDARSI()
+	var strat domain.Strategy
+	if stratPath != "" {
+		strat, err = strategy.LoadStrategyScript(stratPath)
+		if err != nil {
+			return backtesting.Summary{}, err
+		}
+	} else {
+		fmt.Errorf("You need to select an strategy...", err)
+	}
 
 	// 3. Prepare Execution (Backtesting Layer)
-	// We use 1.0 as default leverage for now.
 	executor := backtesting.NewExecutor(commission, leverage)
 	engine := backtesting.Engine{
 		Strategy:   strat,
@@ -38,7 +48,7 @@ func RunFullBacktest(dataPath, stratPath, indPath string, investment, commission
 	// 6. Persist Results (Report Layer)
 	err = report.ExportResults("results.txt", trades, summary)
 	if err != nil {
-		return summary, err
+		return summary, fmt.Errorf("Failed to save results: %w", err)
 	}
 
 	return summary, nil

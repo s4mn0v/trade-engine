@@ -20,7 +20,7 @@ func CalculateHybridOscillator(candles []domain.Candle, rsiLen, mfiLen, smmaLen 
 		closes[i] = c.Close
 		highs[i] = c.High
 		lows[i] = c.Low
-		volumes[i] = c.Volume
+		volumes[i] = c.BaseVolume
 	}
 
 	// 2. Calculate components
