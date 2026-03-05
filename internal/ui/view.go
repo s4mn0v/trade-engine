@@ -40,6 +40,7 @@ func (m Model) View() tea.View {
 
 		content += "Investment: " + m.Inputs[0].View() + "\n"
 		content += "Commission: " + m.Inputs[1].View() + " %\n"
+		content += "Leverage: " + m.Inputs[2].View() + " x\n"
 
 		btn := "\n[ START ENGINE ]"
 		if m.FocusIndex == 2 {

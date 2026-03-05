@@ -43,7 +43,7 @@ type Model struct {
 	DataFile      string
 	StrategyFile  string
 	IndicatorFile string
-	Results       backtesting.Summary // FIXED: Use backtesting.Summary instead of app.BacktestResult
+	Results       backtesting.Summary
 	Quitting      bool
 }
 
@@ -59,10 +59,13 @@ func New() Model {
 	comm := textinput.New()
 	comm.Placeholder = "Commission % (Default 0.06)"
 
+	lev := textinput.New()
+	lev.Placeholder = "Leverage (Default 1.0)"
+
 	return Model{
 		State:      StateDataPicker,
 		Filepicker: fp,
-		Inputs:     []textinput.Model{amount, comm},
+		Inputs:     []textinput.Model{amount, comm, lev},
 		Logs:       []string{"[SYSTEM] Waiting for data selection..."},
 	}
 }
@@ -133,23 +136,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 			key := keyMsg.String()
 
-			if m.FocusIndex == 0 && len(key) == 1 && !unicode.IsDigit(rune(key[0])) && rune(key[0]) != '.' {
-				return m, nil
+			if (m.FocusIndex >= 0 && m.FocusIndex <= 2) && len(key) == 1 {
+				r := rune(key[0])
+				if !unicode.IsDigit(r) && r != '.' {
+					return m, nil
+				}
 			}
 
 			switch key {
 			case "up", "shift+tab":
 				m.FocusIndex--
 				if m.FocusIndex < 0 {
-					m.FocusIndex = 2
+					m.FocusIndex = 3
 				}
 			case "down", "tab":
 				m.FocusIndex++
-				if m.FocusIndex > 2 {
+				if m.FocusIndex > 3 {
 					m.FocusIndex = 0
 				}
 			case "enter":
-				if m.FocusIndex < 1 {
+				if m.FocusIndex < 2 {
 					m.FocusIndex++
 				} else {
 					if m.Inputs[0].Value() == "" {
@@ -157,6 +163,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					if m.Inputs[1].Value() == "" {
 						m.Inputs[1].SetValue("0.06")
+					}
+					if m.Inputs[2].Value() == "" {
+						m.Inputs[2].SetValue("1.0")
 					}
 					m.State = StateExecuting
 					return m, Tick()
@@ -182,9 +191,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.ProgressPct >= 100 {
 				inv, _ := strconv.ParseFloat(m.Inputs[0].Value(), 64)
 				comm, _ := strconv.ParseFloat(m.Inputs[1].Value(), 64)
+				lev, _ := strconv.ParseFloat(m.Inputs[2].Value(), 64)
 
 				// FIXED: Call the real RunFullBacktest function from the app package
-				summary, err := app.RunFullBacktest(m.DataFile, m.StrategyFile, m.IndicatorFile, inv, comm)
+				summary, err := app.RunFullBacktest(m.DataFile, m.StrategyFile, m.IndicatorFile, inv, comm, lev)
 				if err != nil {
 					m.Logs = append(m.Logs, fmt.Sprintf("[ERROR] %v", err))
 					// In a real app, you might transition to an error state here

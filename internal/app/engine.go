@@ -8,7 +8,7 @@ import (
 )
 
 // RunFullBacktest performs the end-to-end backtest process.
-func RunFullBacktest(dataPath, stratPath, indPath string, investment, commission float64) (backtesting.Summary, error) {
+func RunFullBacktest(dataPath, stratPath, indPath string, investment, commission, leverage float64) (backtesting.Summary, error) {
 	// 1. Load Data (Infrastructure Layer)
 	candles, err := data.LoadCandlesFromCSV(dataPath)
 	if err != nil {
@@ -21,7 +21,7 @@ func RunFullBacktest(dataPath, stratPath, indPath string, investment, commission
 
 	// 3. Prepare Execution (Backtesting Layer)
 	// We use 1.0 as default leverage for now.
-	executor := backtesting.NewExecutor(commission, 1.0)
+	executor := backtesting.NewExecutor(commission, leverage)
 	engine := backtesting.Engine{
 		Strategy:   strat,
 		Candles:    candles,
