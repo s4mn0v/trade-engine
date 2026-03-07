@@ -1,23 +1,30 @@
 package report
 
 import (
+	"encoding/csv"
 	"fmt"
 	"os"
+	"strconv"
 	"text/tabwriter"
 
 	"github.com/s4mn0v/trade-engine/internal/backtesting"
-	"github.com/s4mn0v/trade-engine/internal/domain" // REPLACE WITH YOUR MODULE PATH
+	"github.com/s4mn0v/trade-engine/internal/domain"
 )
 
-// ExportResults creates the results.txt file with a detailed breakdown of the backtest.
-func ExportResults(filename string, trades []domain.Trade, summary backtesting.Summary) error {
+func ExportResults(trades []domain.Trade, summary backtesting.Summary) error {
+	if err := exportTXT("results.txt", trades, summary); err != nil {
+		return err
+	}
+	return exportCSV("results.csv", trades, summary)
+}
+
+func exportTXT(filename string, trades []domain.Trade, summary backtesting.Summary) error {
 	file, err := os.Create(filename)
 	if err != nil {
-		return fmt.Errorf("failed to create report file: %w", err)
+		return err
 	}
 	defer file.Close()
 
-	// 1. Write Header & Summary
 	fmt.Fprintln(file, "================================================================================")
 	fmt.Fprintln(file, "                          STRATEGY BACKTEST REPORT                              ")
 	fmt.Fprintln(file, "================================================================================")
@@ -28,36 +35,56 @@ func ExportResults(filename string, trades []domain.Trade, summary backtesting.S
 	fmt.Fprintf(file, "Max Drawdown:     %0.2f%%\n", summary.MaxDrawdown)
 	fmt.Fprintf(file, "Total Trades:     %d\n", summary.TotalTrades)
 	fmt.Fprintln(file, "================================================================================")
-	fmt.Fprintln(file, "")
 
-	// 2. Write Detailed Trade Log
-	fmt.Fprintln(file, "DETAILED TRADE LOG:")
-	fmt.Fprintln(file, "--------------------------------------------------------------------------------")
-
-	// Using tabwriter for clean column alignment
 	w := tabwriter.NewWriter(file, 0, 0, 3, ' ', 0)
-	fmt.Fprintln(w, "ID\tSide\tEntry Time\tEntry Index\tEntry Price\tExit Time\tExit Index\tExit Price\tPnL")
-
+	fmt.Fprintln(w, "\nID\tSide\tEntry Time\tEntry Price\tExit Time\tExit Price\tPnL\tBalance")
 	for i, t := range trades {
-		pnl := t.Profit() * t.Leverage
-		pnlStr := fmt.Sprintf("%+0.2f", pnl)
-
-		fmt.Fprintf(w, "%d\t%s\t%s\t%d\t%0.2f\t%s\t%d\t%0.2f\t%s\n",
-			i+1,
-			t.Side,
-			t.EntryTimestamp.Format("2006-01-02 15:04"),
-			t.EntryIndex,
-			t.EntryPrice,
-			t.ExitTimestamp.Format("2006-01-02 15:04"),
-			t.ExitIndex,
-			t.ExitPrice,
-			pnlStr,
-		)
+		pnl := (t.BalanceAfter - t.BalanceBefore)
+		fmt.Fprintf(w, "%d\t%s\t%s\t%0.2f\t%s\t%0.2f\t%+0.2f\t%0.2f\n",
+			i+1, t.Side, t.EntryTimestamp.Format("01-02 15:04"), t.EntryPrice,
+			t.ExitTimestamp.Format("01-02 15:04"), t.ExitPrice, pnl, t.BalanceAfter)
 	}
 	w.Flush()
+	return nil
+}
 
-	fmt.Fprintln(file, "--------------------------------------------------------------------------------")
-	fmt.Fprintln(file, "End of Report")
+func exportCSV(filename string, trades []domain.Trade, summary backtesting.Summary) error {
+	file, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Header
+	writer.Write([]string{"ID", "Side", "Entry Time", "Exit Time", "Entry Price", "Exit Price", "PnL", "Balance Before", "Balance After"})
+
+	for i, t := range trades {
+		pnl := t.BalanceAfter - t.BalanceBefore
+		writer.Write([]string{
+			strconv.Itoa(i + 1),
+			string(t.Side),
+			t.EntryTimestamp.Format("2006-01-02 15:04:05"),
+			t.ExitTimestamp.Format("2006-01-02 15:04:05"),
+			fmt.Sprintf("%.2f", t.EntryPrice),
+			fmt.Sprintf("%.2f", t.ExitPrice),
+			fmt.Sprintf("%.2f", pnl),
+			fmt.Sprintf("%.2f", t.BalanceBefore),
+			fmt.Sprintf("%.2f", t.BalanceAfter),
+		})
+	}
+
+	// Summary Footer
+	writer.Write([]string{""})
+	writer.Write([]string{"SUMMARY STATISTICS"})
+	writer.Write([]string{"Initial Balance", fmt.Sprintf("%.2f", summary.InitialBalance)})
+	writer.Write([]string{"Final Balance", fmt.Sprintf("%.2f", summary.FinalBalance)})
+	writer.Write([]string{"Net Profit %", fmt.Sprintf("%.2f%%", summary.ProfitPct)})
+	writer.Write([]string{"Win Rate", fmt.Sprintf("%.2f%%", summary.WinRate)})
+	writer.Write([]string{"Max Drawdown", fmt.Sprintf("%.2f%%", summary.MaxDrawdown)})
+	writer.Write([]string{"Total Trades", strconv.Itoa(summary.TotalTrades)})
 
 	return nil
 }

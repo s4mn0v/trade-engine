@@ -46,7 +46,7 @@ func RunFullBacktest(dataPath, stratPath, indPath string, investment, commission
 	summary := backtesting.CalculateMetrics(trades, investment, commission)
 
 	// 6. Persist Results (Report Layer)
-	err = report.ExportResults("results.txt", trades, summary)
+	err = report.ExportResults(trades, summary)
 	if err != nil {
 		return summary, fmt.Errorf("Failed to save results: %w", err)
 	}

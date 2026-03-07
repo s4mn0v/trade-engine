@@ -2,7 +2,6 @@ package domain
 
 import "time"
 
-// Trade represents a completed trading position.
 type Trade struct {
 	ID       int
 	Side     Side
@@ -16,10 +15,12 @@ type Trade struct {
 
 	EntryTimestamp time.Time
 	ExitTimestamp  time.Time
+
+	// Snapshots for reporting
+	BalanceBefore float64
+	BalanceAfter  float64
 }
 
-// Profit calculates the raw difference between exit and entry.
-// (Note: Logic is kept minimal as this is a domain model property).
 func (t Trade) Profit() float64 {
 	if t.Side == SideLong {
 		return t.ExitPrice - t.EntryPrice
