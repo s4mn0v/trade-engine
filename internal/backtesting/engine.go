@@ -29,6 +29,9 @@ func (e *Engine) Run() []domain.Trade {
 
 		if signal.Action == domain.ActionBuy && e.Executor.ActiveTrade == nil {
 			e.Executor.OpenPosition(i, candle, domain.SideLong)
+			if e.Executor.ActiveTrade != nil {
+				e.Executor.ActiveTrade.Reason = signal.Reason
+			}
 		} else if signal.Action == domain.ActionSell && e.Executor.ActiveTrade != nil {
 			trade := e.Executor.ClosePosition(i, candle)
 			if trade != nil {

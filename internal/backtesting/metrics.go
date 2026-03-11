@@ -12,17 +12,15 @@ type Summary struct {
 	WinRate        float64
 	MaxDrawdown    float64
 	TotalTrades    int
+	Leverage       float64
+	Commission     float64
 }
 
-// CalculateMetrics transforms trades into performance data.
-
-func CalculateMetrics(trades []domain.Trade, initialBalance, commissionPercent float64) Summary {
+func CalculateMetrics(trades []domain.Trade, initialBalance, commissionPercent, leverage float64) Summary {
 	currentBalance := initialBalance
 	maxBalance := initialBalance
 	maxDrawdown := 0.0
 	wins := 0
-
-	// Convert percent to decimal for calculation
 	commissionRate := commissionPercent / 100
 
 	for _, t := range trades {
@@ -36,20 +34,15 @@ func CalculateMetrics(trades []domain.Trade, initialBalance, commissionPercent f
 		if netPnL > 0 {
 			wins++
 		}
-
 		if currentBalance > maxBalance {
 			maxBalance = currentBalance
 		}
-
-		// Avoid division by zero if bankrupt
 		if maxBalance > 0 {
 			dd := (maxBalance - currentBalance) / maxBalance
 			if dd > maxDrawdown {
 				maxDrawdown = dd
 			}
 		}
-
-		// If balance hit zero mid-loop (safety check)
 		if currentBalance <= 0 {
 			currentBalance = 0
 			break
@@ -74,5 +67,7 @@ func CalculateMetrics(trades []domain.Trade, initialBalance, commissionPercent f
 		WinRate:        winRate,
 		MaxDrawdown:    maxDrawdown * 100,
 		TotalTrades:    len(trades),
+		Leverage:       leverage,
+		Commission:     commissionPercent,
 	}
 }

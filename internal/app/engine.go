@@ -43,7 +43,7 @@ func RunFullBacktest(dataPath, stratPath, indPath string, investment, commission
 	trades := engine.Run()
 
 	// 5. Calculate Performance (Metrics)
-	summary := backtesting.CalculateMetrics(trades, investment, commission)
+	summary := backtesting.CalculateMetrics(trades, investment, commission, leverage)
 
 	// 6. Persist Results (Report Layer)
 	err = report.ExportResults(trades, summary)

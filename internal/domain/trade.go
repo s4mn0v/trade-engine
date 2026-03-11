@@ -3,22 +3,18 @@ package domain
 import "time"
 
 type Trade struct {
-	ID       int
-	Side     Side
-	Leverage float64
-
-	EntryPrice float64
-	ExitPrice  float64
-
-	EntryIndex int
-	ExitIndex  int
-
+	ID             int
+	Side           Side
+	Leverage       float64
+	EntryPrice     float64
+	ExitPrice      float64
+	EntryIndex     int
+	ExitIndex      int
 	EntryTimestamp time.Time
 	ExitTimestamp  time.Time
-
-	// Snapshots for reporting
-	BalanceBefore float64
-	BalanceAfter  float64
+	BalanceBefore  float64
+	BalanceAfter   float64
+	Reason         string // Explanation carried from the signal
 }
 
 func (t Trade) Profit() float64 {
